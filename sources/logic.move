@@ -5,6 +5,8 @@ module Hem_Acc::Practical2 {
     use aptos_framework::coin::{Self, Coin};
     use aptos_framework::object::{Self, Object};
     use aptos_framework::timestamp;
+    use aptos_framework::object::ObjectGroup;
+    use aptos_framework::string;
 
     // Error codes
     /// Not admin, access only for admin
@@ -56,8 +58,8 @@ module Hem_Acc::Practical2 {
     // Initializing the contract
     fun init_module(admin: &signer) {
 
-        // let admin_address = signer::address_of(caller);
-        let constructor_ref = object::create_named_object(caller, NAME);
+        let admin_address = signer::address_of(admin);
+        let constructor_ref = object::create_object(admin_address);
         let object_signer = object::generate_signer(&constructor_ref);
 
         move_to(
@@ -81,7 +83,7 @@ module Hem_Acc::Practical2 {
 
         move_to(
             admin,
-            AdminStore { mint_cap, burn_cap, freeze_cap, SECS_PER_YEAR }
+            AdminStore { mint_cap, burn_cap, freeze_cap, expiry_period: SECS_PER_YEAR }
         );
 
     }
@@ -91,10 +93,10 @@ module Hem_Acc::Practical2 {
         userfunds: &vector<CustomerAccount>, user_addr: address
     ): u64 {
         let i = 0;
-        let len = vector::length(user_funds);
+        let len = vector::length(userfunds);
 
         while (i < len) {
-            let customer_account = vector::borrow(user_funds, i);
+            let customer_account = vector::borrow(userfunds, i);
             if (customer_account.customer_address == user_addr) {
                 return i
             };
@@ -104,44 +106,43 @@ module Hem_Acc::Practical2 {
         len
     }
 
-    public entry fun mint_tokens(admin: &signer, customer_address: address, amount: u64) acquires ObjectStore, AdminData, AdminStore {
+    public entry fun mint_tokens(
+        admin: &signer, customer_address: address, amount: u64
+    ) acquires ObjectStore, AdminData, AdminStore {
         assert!(signer::address_of(admin) == @Hem_Acc, ENOT_ADMIN);
 
         let object_address = borrow_global_mut<ObjectStore>(@Hem_Acc).object_address;
         let object = object::address_to_object(object_address);
         let admin_data =
-            borrow_global_mut<AdminData>(object::object_address(&object_address));
+            borrow_global_mut<AdminData>(&object);
+
+        let mint_cap = borrow_global_mut<AdminStore>(@Hem_Acc).mint_cap;
 
         let index = find_user_fund_index(&admin_data.userfunds, customer_address);
 
         if (index == vector::length(&admin_data.userfunds)) {
             // User doesn't have an account yet, create account and mint tokens for his address.
+            let minted_coins = coin::mint<LoyaltyToken>(amount, &mint_cap);
+
             vector::push_back(
-                &admin_data.user_funds,
+                &mut admin_data.userfunds,
                 CustomerAccount {
                     balance: coin::zero<LoyaltyToken>(),
                     customer_address,
-                    SECS_PER_YEAR
+                    expiry_timestamp: timestamp::now_seconds() + SECS_PER_YEAR
                 }
-            )
+            );
         } else {
             let customer_account = vector::borrow_mut(&mut admin_data.userfunds, index);
-            let mint_cap = borrow_global_mut<AdminStore>(@Hem_Acc).mint_cap;
-            let minted_coins = coin::mint<LoyaltyToken>(amount, mint_cap);
+            let minted_coins = coin::mint<LoyaltyToken>(amount, &mint_cap);
 
             coin::merge(&mut customer_account.balance, minted_coins);
-        }
+        };
     }
 
-    public entry fun redeem_tokens(customer_signer: &signer, amount: u64){
+    public entry fun redeem_tokens(customer_signer: &signer, amount: u64) {}
 
-    }
+    public fun check_balance(customer_signer: &signer): u64 { 0 }
 
-    public fun check_balance(customer_signer: &signer): u64 {
-
-    }
-
-    public entry fun withdraw_expired_tokens(admin: &signer){
-
-    }
+    public entry fun withdraw_expired_tokens(admin: &signer) {}
 }
