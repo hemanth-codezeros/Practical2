@@ -114,8 +114,7 @@ module Hem_Acc::Practical2 {
         admin: &signer, customer_address: address, amount: u64
     ) acquires AdminData, MintCapStorage {
         assert!(signer::address_of(admin) == @Hem_Acc, ENOT_ADMIN);
-        let object_address =
-            object::create_object_address(&@Hem_Acc, SEED_FOR_OBJECT);
+        let object_address = object::create_object_address(&@Hem_Acc, SEED_FOR_OBJECT);
         let admin_data = borrow_global_mut<AdminData>(object_address);
         let mint_cap = borrow_global_mut<MintCapStorage<LoyaltyToken>>(@Hem_Acc).mint_cap;
         let index = find_user_fund_index(&admin_data.userfunds, customer_address);
@@ -152,12 +151,8 @@ module Hem_Acc::Practical2 {
         // destroy_mint_cap<LoyaltyToken>(mint_cap);
     }
 
-    public entry fun redeem_tokens(
-        customer_signer: &signer, amount: u64
-    ) acquires AdminData {
-
-        let object_address =
-            object::create_object_address(&@Hem_Acc, SEED_FOR_OBJECT);
+    public entry fun redeem_tokens(customer_signer: &signer, amount: u64) acquires AdminData {
+        let object_address = object::create_object_address(&@Hem_Acc, SEED_FOR_OBJECT);
         let admin_data = borrow_global_mut<AdminData>(object_address);
         let index =
             find_user_fund_index(
@@ -173,20 +168,31 @@ module Hem_Acc::Practical2 {
                 ENO_TOKENS_TO_REDEEM
             );
 
-            let coinbatch = vector::remove<CoinBatch>(&mut customer_account.batches, 0);
-            assert!(
-                coinbatch.expiry_timestamp < timestamp::now_seconds(),
-                ETOKENS_EXPIRED
-            );
-            let coins = coin::extract(&mut coinbatch.token, amount);
-            coin::deposit(customer_account.customer_address, coins);
+            // Trying to remove tokens from batches depending on amount we run loop on batches.
+            while (amount > 0) {
+                let coinbatch = vector::borrow_mut(&mut customer_account.batches, 0);
+
+                if (coinbatch.expiry_timestamp > timestamp::now_seconds()) {
+                    continue
+                };
+
+                let batch_value = coin::value<LoyaltyToken>(&coinbatch.token);
+                if (batch_value < amount) {
+                    let coins = coin::extract_all(&mut coinbatch.token);
+                    coin::deposit(customer_account.customer_address, coins);
+                    amount = amount - batch_value;
+                } else {
+                    let coins = coin::extract(&mut coinbatch.token, amount);
+                    coin::deposit(customer_account.customer_address, coins);
+                    amount = 0;
+                }
+            };
         }
     }
 
     #[view]
     public fun check_balance(customer_address: address): u64 acquires AdminData {
-        let object_address =
-            object::create_object_address(&@Hem_Acc, SEED_FOR_OBJECT);
+        let object_address = object::create_object_address(&@Hem_Acc, SEED_FOR_OBJECT);
         let admin_data = borrow_global_mut<AdminData>(object_address);
         let index = find_user_fund_index(&admin_data.userfunds, customer_address);
         if (index == vector::length(&admin_data.userfunds)) {
@@ -206,26 +212,30 @@ module Hem_Acc::Practical2 {
         }
     }
 
-    public entry fun withdraw_expired_tokens(
-        admin: &signer, customer_address: address
-    ) acquires BurnCapStorage, AdminData {
-        let object_address =
-            object::create_object_address(&@Hem_Acc, SEED_FOR_OBJECT);
+    public entry fun withdraw_expired_tokens(admin: &signer) acquires BurnCapStorage, AdminData {
+        let object_address = object::create_object_address(&@Hem_Acc, SEED_FOR_OBJECT);
         let admin_data = borrow_global_mut<AdminData>(object_address);
-        let index = find_user_fund_index(&admin_data.userfunds, customer_address);
-
-        let customer_account = vector::borrow_mut(&mut admin_data.userfunds, index);
         let burn_cap = borrow_global_mut<BurnCapStorage<LoyaltyToken>>(@Hem_Acc).burn_cap;
+        let j = 0;
+        let len = vector::length(&admin_data.userfunds);
+        while (j < len) {
+            let customer_account = vector::borrow_mut(&mut admin_data.userfunds, j);
+            let i: u64 = 0;
+            let length: u64 = vector::length(&customer_account.batches);
 
-        let i: u64 = 0;
-        let length: u64 = vector::length(&customer_account.batches);
-        while (i < length) {
-            let coinbatch = vector::borrow_mut(&mut customer_account.batches, i);
-
-            if (coinbatch.expiry_timestamp > timestamp::now_seconds()) {
-                coin::burn(coinbatch.token, &burn_cap);
-
+            while (i < length) {
+                let coinbatch = vector::borrow_mut(&mut customer_account.batches, i);
+                if (coinbatch.expiry_timestamp > timestamp::now_seconds()) {
+                    let coinbatch = vector::remove(&mut customer_account.batches, i);
+                    let CoinBatch { token,.. } = coinbatch;
+                    coin::burn(token, &burn_cap);
+                    continue
+                };
+                let CoinBatch { token: _, expiry_timestamp: _ } = coinbatch;
+                i = i + 1;
             };
+
+            j = j + 1;
         };
         move_to(admin, BurnCapStorage { burn_cap });
     }
