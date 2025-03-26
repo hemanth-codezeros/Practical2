@@ -99,7 +99,8 @@ module Hem_Acc::Practical2 {
         assert!(signer::address_of(admin) == @Hem_Acc, ENOT_ADMIN);
         let object_address = object::create_object_address(&@Hem_Acc, SEED_FOR_OBJECT);
         let admin_data = borrow_global_mut<AdminData>(object_address);
-        let mint_cap = borrow_global_mut<MintCapStorage<LoyaltyToken>>(@Hem_Acc).mint_cap;
+        let MintCapStorage { mint_cap } =
+            move_from<MintCapStorage<LoyaltyToken>>(@Hem_Acc);
         let index = find_user_fund_index(&admin_data.userfunds, customer_address);
 
         if (index == vector::length(&admin_data.userfunds)) {
@@ -198,7 +199,8 @@ module Hem_Acc::Practical2 {
     public entry fun withdraw_expired_tokens(admin: &signer) acquires BurnCapStorage, AdminData {
         let object_address = object::create_object_address(&@Hem_Acc, SEED_FOR_OBJECT);
         let admin_data = borrow_global_mut<AdminData>(object_address);
-        let burn_cap = borrow_global_mut<BurnCapStorage<LoyaltyToken>>(@Hem_Acc).burn_cap;
+        let BurnCapStorage { burn_cap } =
+            move_from<BurnCapStorage<LoyaltyToken>>(@Hem_Acc);
         let j = 0;
         let len = vector::length(&admin_data.userfunds);
         while (j < len) {
