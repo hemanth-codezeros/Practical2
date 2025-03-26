@@ -2,10 +2,9 @@ module Hem_Acc::Practical2 {
     use std::signer;
     use std::vector;
     use aptos_framework::account;
-    use aptos_framework::coin::{Self, Coin};
+    use aptos_framework::coin::{Self, Coin, destroy_mint_cap};
     use aptos_framework::object::{Self, Object};
     use aptos_framework::timestamp;
-    use aptos_framework::object::ObjectGroup;
     use aptos_framework::string;
 
     // Error codes
@@ -15,7 +14,7 @@ module Hem_Acc::Practical2 {
     /// Not a customer
     const ENOT_CUSTOMER: u64 = 1002;
 
-    /// The tokesn you are trying to fetch have expired
+    /// The tokens you are trying to fetch have expired
     const ETOKENS_EXPIRED: u64 = 1003;
 
     ///Customer has no tokens to redeem
@@ -24,6 +23,10 @@ module Hem_Acc::Practical2 {
     /// Tokens for the customer have expired
     const ETOKENS_NOT_EXPIRED: u64 = 1005;
 
+    /// User doesn't have an account yet, its forbidden to redeem tokens without account.
+    const ENO_ACCOUNT_FOR_USER: u64 = 1006;
+
+    /// Creating 1 YEAR as default token expiry time for new minted tokens.
     const SECS_PER_YEAR: u64 = 31536000;
 
     // const NAME: vector<u8> = b"AdminTokenObject";
@@ -112,9 +115,8 @@ module Hem_Acc::Practical2 {
         assert!(signer::address_of(admin) == @Hem_Acc, ENOT_ADMIN);
 
         let object_address = borrow_global_mut<ObjectStore>(@Hem_Acc).object_address;
-        let object = object::address_to_object(object_address);
-        let admin_data =
-            borrow_global_mut<AdminData>(&object);
+        // let object = object::address_to_object<AdminData>(object_address);
+        let admin_data = borrow_global_mut<AdminData>(object_address);
 
         let mint_cap = borrow_global_mut<AdminStore>(@Hem_Acc).mint_cap;
 
@@ -124,10 +126,10 @@ module Hem_Acc::Practical2 {
             // User doesn't have an account yet, create account and mint tokens for his address.
             let minted_coins = coin::mint<LoyaltyToken>(amount, &mint_cap);
 
-            vector::push_back(
+            vector::push_back(  
                 &mut admin_data.userfunds,
                 CustomerAccount {
-                    balance: coin::zero<LoyaltyToken>(),
+                    balance: minted_coins,
                     customer_address,
                     expiry_timestamp: timestamp::now_seconds() + SECS_PER_YEAR
                 }
@@ -138,11 +140,53 @@ module Hem_Acc::Practical2 {
 
             coin::merge(&mut customer_account.balance, minted_coins);
         };
+        destroy_mint_cap<LoyaltyToken>(mint_cap);
     }
 
-    public entry fun redeem_tokens(customer_signer: &signer, amount: u64) {}
+    public entry fun redeem_tokens(
+        customer_signer: &signer, amount: u64
+    ) acquires AdminData, ObjectStore {
 
-    public fun check_balance(customer_signer: &signer): u64 { 0 }
+        let object_address = borrow_global_mut<ObjectStore>(@Hem_Acc).object_address;
+        // let object = object::address_to_object<AdminData>(object_address);
+        let admin_data = borrow_global_mut<AdminData>(object_address);
+        let index =
+            find_user_fund_index(
+                &admin_data.userfunds, signer::address_of(customer_signer)
+            );
+        if (index == vector::length(&admin_data.userfunds)) {
+            // User doesn't have an account yet, its forbidden to redeem tokens without account.
+            abort ENO_ACCOUNT_FOR_USER;
+        } else {
+            let customer_account = vector::borrow_mut(&mut admin_data.userfunds, index);
+            assert!(
+                customer_account.expiry_timestamp < timestamp::now_seconds(),
+                ETOKENS_EXPIRED
+            );
+            let coins = coin::extract(&mut customer_account.balance, amount);
+            coin::deposit(customer_account.customer_address, coins);
+        }
+    }
+
+    #[view]
+    public fun check_balance(customer_address: address): u64 acquires ObjectStore, AdminData {
+        let object_address = borrow_global_mut<ObjectStore>(@Hem_Acc).object_address;
+        // let object = object::address_to_object<AdminData>(object_address);
+        let admin_data = borrow_global_mut<AdminData>(object_address);
+        let index = find_user_fund_index(&admin_data.userfunds, customer_address);
+        if (index == vector::length(&admin_data.userfunds)) {
+            // User doesn't have an account yet, its forbidden to redeem tokens without account.
+            abort ENO_ACCOUNT_FOR_USER
+        } else {
+            let customer_account = vector::borrow_mut(&mut admin_data.userfunds, index);
+            assert!(
+                customer_account.expiry_timestamp < timestamp::now_seconds(),
+                ETOKENS_EXPIRED
+            );
+            coin::value<LoyaltyToken>(&customer_account.balance)
+
+        }
+    }
 
     public entry fun withdraw_expired_tokens(admin: &signer) {}
 }
