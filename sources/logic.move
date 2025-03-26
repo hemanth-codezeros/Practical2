@@ -33,11 +33,16 @@ module Hem_Acc::Practical2 {
 
     struct LoyaltyToken has store {}
 
-    /// Struct representing a customer's loyalty account
+    /// Struct representing a customer's loyalty token account
     struct CustomerAccount has store {
-        balance: Coin<LoyaltyToken>,
-        customer_address: address, // Customers public address
-        expiry_timestamp: u64 // When the current balance expires
+        balance: vector<CoinBatch>, // All batches of tokens minted for a specific customer.
+        customer_address: address // Customers public address
+    }
+
+    /// Batch of tokens minted with a specific expiry timestamp
+    struct CoinBatch has store {
+        token: Coin<LoyaltyToken>, // Minted tokens batch
+        expiry_timestamp: u64 // and respective expiry timestamp for this batch
     }
 
     #[resource_group_member(group = aptos_framework::object::ObjectGroup)]
@@ -125,20 +130,26 @@ module Hem_Acc::Practical2 {
         if (index == vector::length(&admin_data.userfunds)) {
             // User doesn't have an account yet, create account and mint tokens for his address.
             let minted_coins = coin::mint<LoyaltyToken>(amount, &mint_cap);
+            let coinbatch = CoinBatch {
+                token: minted_coins,
+                expiry_timestamp: timestamp::now_seconds() + SECS_PER_YEAR
+            };
+            let balance = vector::empty<CoinBatch>();
+            vector::push_back(&mut balance, coinbatch);
 
-            vector::push_back(  
+            vector::push_back(
                 &mut admin_data.userfunds,
-                CustomerAccount {
-                    balance: minted_coins,
-                    customer_address,
-                    expiry_timestamp: timestamp::now_seconds() + SECS_PER_YEAR
-                }
+                CustomerAccount { balance, customer_address }
             );
         } else {
             let customer_account = vector::borrow_mut(&mut admin_data.userfunds, index);
             let minted_coins = coin::mint<LoyaltyToken>(amount, &mint_cap);
+            let coinbatch = CoinBatch {
+                token: minted_coins,
+                expiry_timestamp: timestamp::now_seconds() + SECS_PER_YEAR
+            };
 
-            coin::merge(&mut customer_account.balance, minted_coins);
+            vector::push_back(&mut customer_account.balance, coinbatch);
         };
         destroy_mint_cap<LoyaltyToken>(mint_cap);
     }
@@ -188,5 +199,14 @@ module Hem_Acc::Practical2 {
         }
     }
 
-    public entry fun withdraw_expired_tokens(admin: &signer) {}
+    public entry fun withdraw_expired_tokens(admin: &signer) {
+        let object_address = borrow_global_mut<ObjectStore>(@Hem_Acc).object_address;
+        let admin_data = borrow_global_mut<AdminData>(object_address);
+        let i = 0;
+        let length = vector::length(&admin_data.userfunds);
+        while (i < length) {
+            let customer_account = vector::borrow_mut(&mut admin_data.userfunds, i);
+            if (customer_account.expiry_timestamp > timestamp::now_seconds()) coin::burn()
+        }
+    }
 }
