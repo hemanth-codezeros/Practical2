@@ -31,6 +31,7 @@ module Hem_Acc::Practical2 {
     /// Seed value for admin data object
     const SEED_FOR_OBJECT: vector<u8> = b"AdminDataObject";
 
+    // Custom coin for rewarding customers
     struct LoyaltyToken has store {}
 
     /// Struct representing a customer's loyalty token account
@@ -92,24 +93,6 @@ module Hem_Acc::Practical2 {
         move_to(admin, FreezeCapStorage { freeze_cap });
     }
 
-    // Helper function to find index of an address of a user
-    fun find_user_fund_index(
-        userfunds: &vector<CustomerAccount>, user_addr: address
-    ): u64 {
-        let i = 0;
-        let len = vector::length(userfunds);
-
-        while (i < len) {
-            let customer_account = vector::borrow(userfunds, i);
-            if (customer_account.customer_address == user_addr) {
-                return i
-            };
-            i = i + 1;
-        };
-
-        len
-    }
-
     public entry fun mint_tokens(
         admin: &signer, customer_address: address, amount: u64
     ) acquires AdminData, MintCapStorage {
@@ -120,7 +103,7 @@ module Hem_Acc::Practical2 {
         let index = find_user_fund_index(&admin_data.userfunds, customer_address);
 
         if (index == vector::length(&admin_data.userfunds)) {
-            // User doesn't have an account yet, create account and mint tokens for his address.
+            // User doesn't have an account yet, create an account and mint tokens for his address.
             let minted_coins = coin::mint<LoyaltyToken>(amount, &mint_cap);
             admin_data.total_minted = admin_data.total_minted
                 + coin::value<LoyaltyToken>(&minted_coins);
@@ -238,5 +221,23 @@ module Hem_Acc::Practical2 {
             j = j + 1;
         };
         move_to(admin, BurnCapStorage { burn_cap });
+    }
+
+    // Helper function to find index of an address of a user
+    fun find_user_fund_index(
+        userfunds: &vector<CustomerAccount>, user_addr: address
+    ): u64 {
+        let i = 0;
+        let len = vector::length(userfunds);
+
+        while (i < len) {
+            let customer_account = vector::borrow(userfunds, i);
+            if (customer_account.customer_address == user_addr) {
+                return i
+            };
+            i = i + 1;
+        };
+
+        len
     }
 }
