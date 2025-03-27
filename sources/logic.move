@@ -197,6 +197,7 @@ module Hem_Acc::Practical2 {
     }
 
     public entry fun withdraw_expired_tokens(admin: &signer) acquires BurnCapStorage, AdminData {
+        assert!(signer::address_of(admin) == @Hem_Acc, ENOT_ADMIN);
         let object_address = object::create_object_address(&@Hem_Acc, SEED_FOR_OBJECT);
         let admin_data = borrow_global_mut<AdminData>(object_address);
         let BurnCapStorage { burn_cap } =
