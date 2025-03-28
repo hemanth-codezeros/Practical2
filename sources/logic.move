@@ -109,8 +109,8 @@ module hem_acc::Practical2 {
 
         //Minting coins with one year expiry time.
         let minted_coins = coin::mint<LoyaltyToken>(amount, &mint_cap);
-        admin_data.total_minted = admin_data.total_minted
-            + coin::value<LoyaltyToken>(&minted_coins);
+        admin_data.total_minted =
+            admin_data.total_minted + coin::value<LoyaltyToken>(&minted_coins);
         let coinbatch = CoinBatch {
             token: minted_coins,
             expiry_timestamp: timestamp::now_seconds() + SECS_PER_YEAR
@@ -286,11 +286,11 @@ module hem_acc::Practical2 {
 
         move_to(&arg, MintCapStorage { mint_cap });
 
-        admin_data.total_minted = admin_data.total_minted
-            + coin::value<LoyaltyToken>(&minted_coins1)
-            + coin::value<LoyaltyToken>(&minted_coins2)
-            + coin::value<LoyaltyToken>(&minted_coins3)
-            + coin::value<LoyaltyToken>(&minted_coins4);
+        admin_data.total_minted =
+            admin_data.total_minted + coin::value<LoyaltyToken>(&minted_coins1)
+                + coin::value<LoyaltyToken>(&minted_coins2)
+                + coin::value<LoyaltyToken>(&minted_coins3)
+                + coin::value<LoyaltyToken>(&minted_coins4);
 
         let coinbatch1 = CoinBatch { token: minted_coins1, expiry_timestamp: 100 };
         let coinbatch2 = CoinBatch { token: minted_coins2, expiry_timestamp: 1400 };
