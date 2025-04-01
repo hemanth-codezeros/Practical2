@@ -98,7 +98,10 @@ module hem_acc::Practical2 {
     }
 
     public entry fun mint_tokens(
-        admin: &signer, customer_address: address, amount: u64
+        admin: &signer,
+        customer_address: address,
+        amount: u64,
+        expiry_time: u64
     ) acquires AdminData, MintCapStorage {
         assert!(signer::address_of(admin) == @hem_acc, ENOT_ADMIN);
         let object_address = object::create_object_address(&@hem_acc, SEED_FOR_OBJECT);
@@ -111,10 +114,7 @@ module hem_acc::Practical2 {
         let minted_coins = coin::mint<LoyaltyToken>(amount, &mint_cap);
         admin_data.total_minted =
             admin_data.total_minted + coin::value<LoyaltyToken>(&minted_coins);
-        let coinbatch = CoinBatch {
-            token: minted_coins,
-            expiry_timestamp: timestamp::now_seconds() + SECS_PER_YEAR
-        };
+        let coinbatch = CoinBatch { token: minted_coins, expiry_timestamp: expiry_time };
 
         if (index == vector::length(&admin_data.userfunds)) {
             // User doesn't have an account yet, create an account and add minted tokens for his address.
@@ -131,7 +131,7 @@ module hem_acc::Practical2 {
         move_to(admin, MintCapStorage { mint_cap });
     }
 
-    public entry fun redeem_tokens(customer_signer: &signer, amount: u64) acquires AdminData {
+    public entry fun redeem_tokens(customer_signer: &signer) acquires AdminData {
         let object_address = object::create_object_address(&@hem_acc, SEED_FOR_OBJECT);
         let admin_data = borrow_global_mut<AdminData>(object_address);
         let index =
@@ -145,27 +145,41 @@ module hem_acc::Practical2 {
             ENO_TOKENS_TO_REDEEM
         );
 
-        let i = 0;
-        // Trying to remove tokens from batches depending on amount we run loop on batches.
-        while (amount > 0) {
-            let coinbatch = vector::borrow_mut(&mut customer_account.batches, i);
+        vector::for_each_mut(
+            &mut customer_account.batches,
+            |coinbatch| {
 
-            // Checking if batch has expired, if yes, then moving to next batch to redeem
-            if (coinbatch.expiry_timestamp < timestamp::now_seconds()) {
-                i = i + 1;
-                continue // Moving to next batch
-            };
-            let batch_value = coin::value<LoyaltyToken>(&coinbatch.token);
-            if (batch_value < amount) {
-                let coins = coin::extract_all(&mut coinbatch.token);
-                coin::deposit(customer_account.customer_address, coins);
-                amount = amount - batch_value;
-            } else {
-                let coins = coin::extract(&mut coinbatch.token, amount);
-                coin::deposit(customer_account.customer_address, coins);
-                amount = 0;
+                if (coinbatch.expiry_timestamp >= timestamp::now_seconds()) {
+                    // Redeem coins from batches where time hasn't expired according to the time-stamp
+                    let coins = coin::extract_all(&mut coinbatch.token);
+                    coin::deposit(customer_account.customer_address, coins);
+                }
             }
-        };
+        );
+
+        // Earlier optional code, which provides custom amount redeeming of coins. Keeping it for future use.
+        //
+        // let i = 0;
+        // // Trying to remove tokens from batches depending on amount we run loop on batches.
+        // while (amount > 0) {
+        //     let coinbatch = vector::borrow_mut(&mut customer_account.batches, i);
+
+        //     // Checking if batch has expired, if yes, then moving to next batch to redeem
+        //     if (coinbatch.expiry_timestamp < timestamp::now_seconds()) {
+        //         i = i + 1;
+        //         continue // Moving to next batch
+        //     };
+        //     let batch_value = coin::value<LoyaltyToken>(&coinbatch.token);
+        //     if (batch_value < amount) {
+        //         let coins = coin::extract_all(&mut coinbatch.token);
+        //         coin::deposit(customer_account.customer_address, coins);
+        //         amount = amount - batch_value;
+        //     } else {
+        //         let coins = coin::extract(&mut coinbatch.token, amount);
+        //         coin::deposit(customer_account.customer_address, coins);
+        //         amount = 0;
+        //     }
+        // };
 
     }
 
@@ -174,7 +188,7 @@ module hem_acc::Practical2 {
         let object_address = object::create_object_address(&@hem_acc, SEED_FOR_OBJECT);
         let admin_data = borrow_global_mut<AdminData>(object_address);
         let BurnCapStorage { burn_cap } =
-            move_from<BurnCapStorage<LoyaltyToken>>(@hem_acc);
+            borrow_global<BurnCapStorage<LoyaltyToken>>(@hem_acc);
 
         vector::for_each_mut(
             &mut admin_data.userfunds,
@@ -189,14 +203,14 @@ module hem_acc::Practical2 {
                         let coinbatch = vector::remove(&mut customer_account.batches, i);
                         length = length - 1;
                         let CoinBatch { token,.. } = coinbatch;
-                        coin::burn(token, &burn_cap);
+                        coin::burn(token, burn_cap);
                         continue // Don't increment i after removing a batch.
                     };
                     i = i + 1;
                 };
             }
         );
-        move_to(admin, BurnCapStorage { burn_cap });
+        // move_to(admin, BurnCapStorage { burn_cap });
     }
 
     #[view]
@@ -243,7 +257,8 @@ module hem_acc::Practical2 {
         let custom_address: address =
             @0xb1f4c9f2d642d40de852b1bd68138143b95dfe8f8f3676adc7b8fd6f81a14441;
         timestamp::set_time_has_started_for_testing(&framework);
-        mint_tokens(&arg, custom_address, 1067);
+        let time = SECS_PER_YEAR;
+        mint_tokens(&arg, custom_address, 1067, time);
         assert!(check_balance(custom_address) == 1067, 1);
     }
 
@@ -256,12 +271,13 @@ module hem_acc::Practical2 {
 
         let custom_address: address = signer::address_of(&recipient_signer);
         timestamp::set_time_has_started_for_testing(&framework);
+        let time = SECS_PER_YEAR;
 
-        mint_tokens(&arg, custom_address, 3106);
+        mint_tokens(&arg, custom_address, 3106, time);
         assert!(check_balance(custom_address) == 3106, 1);
 
-        redeem_tokens(&recipient_signer, 104);
-        assert!(check_balance(custom_address) == 3002, 1);
+        redeem_tokens(&recipient_signer);
+        assert!(check_balance(custom_address) == 0, 1);
     }
 
     #[test(arg = @hem_acc, framework = @aptos_framework)]
